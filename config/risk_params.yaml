@@ -1,0 +1,37 @@
+# Risk parameters — HARD LIMITS, never overridden by LLM
+# Breach of any limit triggers appropriate kill switch
+
+position_limits:
+  max_position_size_pct: 0.05          # Max 5% of capital per position
+  max_sector_exposure_pct: 0.20        # Max 20% in any single sector
+  max_intraday_positions: 10           # Max open MIS positions simultaneously
+  max_swing_positions: 15              # Max open CNC positions simultaneously
+  max_correlated_positions: 3          # Max positions in same sector
+  smallcap_max_allocation_pct: 0.15    # Smallcaps capped at 15% of portfolio
+
+loss_limits:
+  max_daily_loss_pct: 0.02             # Kill switch: halt if portfolio down 2% today
+  max_drawdown_pct: 0.10               # Halt if 10% drawdown from all-time peak
+  max_single_trade_loss_pct: 0.01      # Max 1% portfolio loss per trade (stop sizing)
+
+liquidity:
+  min_liquidity_daily_value_cr: 0.5    # Min ₹50 lakh avg daily traded value
+  min_price: 10.0                      # Avoid penny stocks below ₹10
+
+stop_loss:
+  stop_loss_atr_multiplier: 1.5        # Default stop = entry ± 1.5 × ATR(14)
+  trailing_stop_activation_pct: 1.0    # Activate trailing stop after 1% profit
+  trailing_stop_distance_pct: 0.5      # Trail by 0.5%
+
+timing:
+  intraday_start: "09:15"              # IST — market open
+  intraday_cutoff: "15:15"             # IST — stop new entries
+  mis_close_time: "15:15"              # IST — start closing MIS positions
+  market_close: "15:30"                # IST — market close
+
+# Promotion checklist thresholds (backtest gate)
+backtest_gate:
+  min_sharpe: 1.0
+  max_drawdown: 0.15
+  min_win_rate: 0.45
+  min_trades: 200

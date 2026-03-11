@@ -1,0 +1,73 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "algo-trading-agent"
+version = "0.1.0"
+description = "AI-powered algorithmic trading agent for Indian markets (NSE/BSE) via Zerodha KiteConnect"
+requires-python = ">=3.11"
+dependencies = [
+    "kiteconnect>=5.0.1",
+    "anthropic>=0.40.0",
+    "langgraph>=0.2.0",
+    "langchain-anthropic>=0.3.0",
+    "pandas>=2.1.0",
+    "pandas-ta>=0.3.14b",
+    "numpy>=1.26.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "python-dotenv>=1.0.0",
+    "apscheduler>=3.10.4",
+    "playwright>=1.40.0",
+    "pyotp>=2.9.0",
+    "vectorbt>=0.26.1",
+    "backtrader>=1.9.78.123",
+    "quantstats>=0.0.62",
+    "nsepy>=0.8",
+    "httpx>=0.26.0",
+    "aiohttp>=3.9.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.0.0",
+    "python-telegram-bot>=20.7",
+    "pyaml>=23.12.0",
+    "rich>=13.7.0",
+    "click>=8.1.7",
+    "structlog>=24.1.0",
+    "orjson>=3.9.10",
+    "asyncio-throttle>=1.0.2",
+    "cachetools>=5.3.2",
+    "pytz>=2024.1",
+    "holidays>=0.45",
+    "scipy>=1.11.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-mock>=3.12.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.12.0",
+    "ruff>=0.1.9",
+    "mypy>=1.8.0",
+]
+
+[project.scripts]
+algo-trader = "main:cli"
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "I", "N", "W"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true

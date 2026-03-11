@@ -1,0 +1,48 @@
+# Strategy parameters — tunable without code changes
+# All values can be overridden via environment variables (STRATEGY_* prefix)
+
+momentum:
+  ema_fast: 20
+  ema_mid: 50
+  ema_slow: 200
+  rsi_min: 50
+  rsi_max: 70
+  macd_fast: 12
+  macd_slow: 26
+  macd_signal: 9
+  adx_min_swing: 25          # ADX threshold for swing mode only
+  vwap_required: true        # Price must be above VWAP (intraday)
+  timeframes:
+    intraday: "5minute"
+    swing: "day"
+
+mean_reversion:
+  bb_period: 20
+  bb_std: 2.0
+  rsi_oversold: 30
+  rsi_exit: 50
+  volume_spike_multiplier: 1.5
+  atr_period: 14
+  atr_stop_multiplier: 1.5
+  min_market_cap_cr: 500     # ₹500 crore (smallcap filter)
+  min_avg_volume_cr: 0.5     # ₹50 lakh avg daily turnover
+  timeframes:
+    intraday: "15minute"
+    swing: "day"
+
+breakout:
+  lookback_periods: 20       # Rolling high/low window
+  volume_multiplier: 2.0     # Volume vs 20-period avg
+  confirmation_bars: 1       # Bars to confirm breakout (avoid false breaks)
+  atr_period: 14
+  atr_stop_multiplier: 1.5
+  timeframes:
+    intraday: "15minute"
+    swing: "day"
+
+sentiment_driven:
+  min_sentiment_score: 7     # Out of 10
+  max_price_move_pct: 3.0    # Don't enter if already moved > 3%
+  score_to_size_factor: 0.1  # Position size = score * factor (7→70%, 10→100%)
+  news_lookback_hours: 24    # Hours to look back for news
+  trend_ema_period: 50       # Price must be above this EMA

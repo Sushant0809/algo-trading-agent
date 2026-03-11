@@ -1,0 +1,49 @@
+# Secrets — never commit
+.env
+.env.local
+logs/.kite_token_cache
+logs/instruments_cache.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Logs & cache (large files)
+logs/
+*.log
+*.parquet
+*.jsonl
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Reports (generated files)
+logs/reports/
