@@ -58,6 +58,7 @@ class PaperSimulator:
             avg_price=effective_price,
             strategy=signal.strategy,
             mode=signal.mode.value,
+            direction="short" if signal.action.value == "SELL" else "long",
             stop_loss=signal.stop_loss,
             target=signal.target,
             order_id=order_id,

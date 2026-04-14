@@ -144,6 +144,9 @@ async def _run_trading(mode: str, trading: str, headless: bool) -> None:
 
     kite = init_kite(settings.kite_api_key, token)
 
+    # --- KiteTicker WebSocket (initialized here, connected after FillTracker setup) ---
+    ticker = init_ticker(settings.kite_api_key, token)
+
     # --- Instrument Cache ---
     logger.info("Loading instrument cache...")
     from config.instruments import load_instruments, refresh_instruments
@@ -168,10 +171,17 @@ async def _run_trading(mode: str, trading: str, headless: bool) -> None:
     from agents.portfolio_agent import PortfolioAgent
     from agents.orchestrator import TradingOrchestrator
     from execution.order_manager import OrderManager
+    from execution.fill_tracker import FillTracker
 
     audit = AuditTrail(settings.log_dir / "audit")
     alerter = TelegramAlerter(settings.telegram_bot_token, settings.telegram_chat_id)
     portfolio = PortfolioState(initial_capital=settings.paper_trading_capital)
+
+    # --- Wire FillTracker to portfolio ---
+    logger.info("Wiring FillTracker to KiteTicker WebSocket...")
+    fill_tracker = FillTracker(portfolio, audit)
+    fill_tracker.setup_ticker_callbacks(ticker)
+    ticker.connect()  # Start WebSocket connection
     signal_bus = SignalBus()
     registry = StrategyRegistry()
     risk_mgr = RiskManager(portfolio, audit)

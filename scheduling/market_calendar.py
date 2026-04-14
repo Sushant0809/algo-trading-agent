@@ -55,7 +55,30 @@ NSE_EXTRA_HOLIDAYS_2025 = {
     date(2025, 12, 25),  # Christmas
 }
 
-ALL_NSE_HOLIDAYS = NSE_EXTRA_HOLIDAYS_2024 | NSE_EXTRA_HOLIDAYS_2025
+NSE_EXTRA_HOLIDAYS_2026 = {
+    date(2026, 1, 26),   # Republic Day
+    date(2026, 3, 11),   # Maha Shivaratri
+    date(2026, 3, 29),   # Holi
+    date(2026, 3, 30),   # Holi (2nd day)
+    date(2026, 4, 2),    # Good Friday
+    date(2026, 4, 10),   # Eid ul-Fitr
+    date(2026, 4, 14),   # Dr. Ambedkar Jayanti
+    date(2026, 4, 17),   # Ram Navami
+    date(2026, 4, 21),   # Mahavir Jayanti
+    date(2026, 5, 15),   # Buddha Purnima
+    date(2026, 7, 7),    # Bakri Id
+    date(2026, 8, 15),   # Independence Day
+    date(2026, 8, 31),   # Janmashtami
+    date(2026, 9, 16),   # Milad un-Nabi
+    date(2026, 10, 2),   # Gandhi Jayanti
+    date(2026, 10, 9),   # Dussehra
+    date(2026, 10, 29),  # Diwali (Diwali day)
+    date(2026, 10, 30),  # Diwali (Laxmi Puja + Govardhan Puja)
+    date(2026, 11, 11),  # Gurunanak Jayanti
+    date(2026, 12, 25),  # Christmas
+}
+
+ALL_NSE_HOLIDAYS = NSE_EXTRA_HOLIDAYS_2024 | NSE_EXTRA_HOLIDAYS_2025 | NSE_EXTRA_HOLIDAYS_2026
 
 
 def is_trading_day(d: date | None = None) -> bool:

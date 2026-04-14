@@ -86,6 +86,14 @@ SECTOR_MAP: dict[str, list[str]] = {
 }
 
 
+# --- Combined universes (deduplicated across all market caps) ---
+# All available stocks from large, mid, and small cap
+NIFTY_ALL_CAP = sorted(list(set(NIFTY50 + NIFTY_MIDCAP_150_SAMPLE + NIFTY_SMALLCAP_250_SAMPLE)))
+
+# Large + Mid cap combined
+NIFTY_MID_LARGE_CAP = sorted(list(set(NIFTY50 + NIFTY_MIDCAP_150_SAMPLE)))
+
+
 def get_universe(name: str) -> list[str]:
     """Return stock list by universe name."""
     mapping = {
@@ -96,6 +104,8 @@ def get_universe(name: str) -> list[str]:
         "nifty_fmcg": NIFTY_FMCG,
         "midcap150": NIFTY_MIDCAP_150_SAMPLE,
         "smallcap250": NIFTY_SMALLCAP_250_SAMPLE,
+        "all_cap": NIFTY_ALL_CAP,
+        "mid_large_cap": NIFTY_MID_LARGE_CAP,
     }
     return mapping.get(name.lower(), [])
 
@@ -119,3 +129,41 @@ def get_sector_for_symbol(symbol: str) -> str | None:
         if symbol in symbols:
             return sector
     return None
+
+
+def get_regime_universe(regime: str, all_symbols: list[str] | None = None) -> list[str]:
+    """
+    Return the appropriate universe of stocks based on market regime.
+
+    Performance data:
+    - Mid+Large cap beats Nifty50 in bulls: +15.5% vs +13.87%
+    - But loses in bears: -13.75% vs -9.80%
+
+    Solution: Switch universe dynamically by regime.
+
+    Args:
+        regime: Market regime classification ("CRASH", "BEAR", "NEUTRAL", "BULL", "STRONG_BULL", "RECOVERY")
+        all_symbols: Full list of available symbols (default: all_cap)
+
+    Returns:
+        List of symbols appropriate for current regime
+    """
+    if all_symbols is None:
+        all_symbols = NIFTY_ALL_CAP
+
+    if regime in ("CRASH", "BEAR"):
+        # Defense: Use NIFTY50 only (50 largest, most liquid, defensive)
+        # These hold up better in downturns
+        return NIFTY50
+
+    elif regime == "NEUTRAL":
+        # Selective: Mid+Large cap mix (65 stocks)
+        # Balance between upside capture and downside protection
+        return NIFTY_MID_LARGE_CAP[:65]
+
+    else:  # BULL, STRONG_BULL, RECOVERY
+        # Offense: Full universe (100+ stocks)
+        # Capture all opportunities in rising markets
+        return all_symbols
+
+

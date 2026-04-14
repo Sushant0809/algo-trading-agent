@@ -5,8 +5,8 @@ Fallback: yfinance (.NS suffix) — free, no subscription needed.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
-import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -67,7 +67,7 @@ def _fetch_yfinance(symbol: str, yf_interval: str, n_bars: int) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def fetch_ohlcv(
+async def fetch_ohlcv(
     instrument_token: int,
     interval: str,
     from_date: datetime,
@@ -89,7 +89,7 @@ def fetch_ohlcv(
             continuous=continuous,
             oi=oi,
         )
-        time.sleep(_RATE_LIMIT_DELAY)
+        await asyncio.sleep(_RATE_LIMIT_DELAY)
         if records:
             df = pd.DataFrame(records)
             df["date"] = pd.to_datetime(df["date"])
@@ -110,7 +110,7 @@ def fetch_ohlcv(
     return _fetch_yfinance(symbol, yf_interval, n_bars)
 
 
-def fetch_latest_bars(
+async def fetch_latest_bars(
     instrument_token: int,
     interval: str,
     n_bars: int = 200,
@@ -135,7 +135,7 @@ def fetch_latest_bars(
             to_date=to_date,
             interval=interval,
         )
-        time.sleep(_RATE_LIMIT_DELAY)
+        await asyncio.sleep(_RATE_LIMIT_DELAY)
         if records:
             df = pd.DataFrame(records)
             df["date"] = pd.to_datetime(df["date"])

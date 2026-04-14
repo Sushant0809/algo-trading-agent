@@ -11,7 +11,7 @@ from typing import Optional
 import pandas as pd
 
 from config.instruments import get_token
-from data.cache import fetch_or_cache
+from data.cache import load_bars, save_bars
 from data.market_data import fetch_latest_bars
 from signals.indicators import add_vwap, compute_all_indicators
 from signals.signal_bus import SignalBus
@@ -59,10 +59,13 @@ class MarketAnalyst:
 
         # Fetch data (cached)
         try:
-            df = fetch_or_cache(
-                token, interval,
-                fetch_latest_bars, token, interval, n_bars
-            )
+            # fetch_latest_bars is async; cache wrapper handles it
+            cached = load_bars(token, interval)
+            if cached is not None:
+                df = cached
+            else:
+                df = await fetch_latest_bars(token, interval, n_bars)
+                save_bars(token, interval, df)
         except Exception as exc:
             logger.warning(f"Data fetch failed for {symbol}: {exc}")
             return []
@@ -85,10 +88,14 @@ class MarketAnalyst:
         # Run all strategies
         signals: list[Signal] = []
         for strategy in self.registry.all():
-            if strategy.name == "sentiment_driven":
-                continue  # Sentiment strategy handled separately by SentimentAgent
+            if strategy.name in ("sentiment_driven", "llm_strategy") and mode == TradingMode.INTRADAY:
+                continue  # Sentiment and LLM strategies are swing-only
             try:
-                signal = strategy.generate_signal(symbol, df, mode)
+                # LLMStrategy uses async path to avoid blocking event loop
+                if hasattr(strategy, "async_generate_signal"):
+                    signal = await strategy.async_generate_signal(symbol, df, mode)
+                else:
+                    signal = strategy.generate_signal(symbol, df, mode)
                 if signal:
                     signals.append(signal)
                     logger.info(f"Signal: {symbol} {signal.action.value} [{strategy.name}] mode={mode.value}")

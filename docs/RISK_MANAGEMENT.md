@@ -62,6 +62,22 @@ Every signal from the market analyst passes through these checks in order:
 
 ---
 
+## Portfolio Allocator (`risk/portfolio_allocator.py`)
+
+Before individual signal evaluation, a `PortfolioAllocator` ranks competing signals and enforces portfolio-level constraints:
+
+1. Drains all pending raw-queue signals (non-blocking)
+2. Scores each: `strategy_weight × signal.confidence × strength_multiplier`
+3. Sorts by score descending
+4. Greedily allocates cash while respecting:
+   - **10% cash floor** (always kept for flexibility)
+   - **Max position size** per stock (from risk_params)
+   - **Max concurrent positions**: 3 new swing or 5 new intraday per cycle
+   - **No duplicate symbols**
+5. Returns shortlisted signals; all others are logged and dropped
+
+---
+
 ## Position Sizing
 
 Three methods implemented in `risk/position_sizer.py`:
@@ -86,14 +102,15 @@ qty = min(risk_qty, max_qty)
 - Sizes position so the stop-loss loss never exceeds 1% of capital
 - Larger ATR → smaller position (more volatile = smaller bet)
 
-### Method 3: Half-Kelly
+### Method 3: Adaptive Kelly Criterion (Backtester)
 ```
 kelly_f = (win_rate × avg_win - (1 - win_rate) × avg_loss) / avg_win
 half_kelly_pct = kelly_f / 2
 ```
-- Requires backtest statistics (win rate, avg win/loss)
-- Used for strategies with a proven edge
-- Half-Kelly to reduce variance compared to full Kelly
+- Applied in the swing backtester (`strategy_backtester.py`) after 40 trades of history
+- Uses rolling 20-trade window: reduces size during losing streaks, increases during winning streaks
+- Half-Kelly with cap at 20% per position for safety
+- Before 40 trades: falls back to regime-based fixed sizing
 
 ### Smallcap Allocation Cap
 - Total allocation to smallcap stocks (Nifty Smallcap 250) ≤ 15% of portfolio

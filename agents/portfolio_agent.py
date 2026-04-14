@@ -113,19 +113,25 @@ class PortfolioAgent:
         if self.risk_mgr.is_killed:
             return "kill_switch"
 
-        # Stop-loss
+        # Stop-loss — direction aware
         effective_stop = pos.trailing_stop or pos.stop_loss
-        if effective_stop > 0 and current_price <= effective_stop:
-            return "stop_loss"
+        if effective_stop > 0:
+            if pos.is_short and current_price >= effective_stop:
+                return "stop_loss"
+            elif not pos.is_short and current_price <= effective_stop:
+                return "stop_loss"
 
-        # Target
-        if pos.target > 0 and current_price >= pos.target:
-            return "target"
+        # Target — direction aware
+        if pos.target > 0:
+            if pos.is_short and current_price <= pos.target:
+                return "target"
+            elif not pos.is_short and current_price >= pos.target:
+                return "target"
 
         return None
 
     async def _update_trailing_stop(self, pos: Position, current_price: float) -> float | None:
-        """Update trailing stop if price moved favorably."""
+        """Update trailing stop if price moved favorably (direction-aware)."""
         if pos.stop_loss <= 0 or pos.avg_price <= 0:
             return None
 
@@ -133,16 +139,24 @@ class PortfolioAgent:
         activation_pct = trail_params["trailing_stop_activation_pct"] / 100
         distance_pct = trail_params["trailing_stop_distance_pct"] / 100
 
-        profit_pct = (current_price - pos.avg_price) / pos.avg_price
-        if profit_pct < activation_pct:
-            return None
-
-        new_trail = round(current_price * (1 - distance_pct), 2)
-        current_stop = pos.trailing_stop or pos.stop_loss
-
-        if new_trail > current_stop:
-            logger.debug(f"Trailing stop updated: {pos.symbol} {current_stop:.2f} → {new_trail:.2f}")
-            return new_trail
+        if pos.is_short:
+            profit_pct = (pos.avg_price - current_price) / pos.avg_price
+            if profit_pct < activation_pct:
+                return None
+            new_trail = round(current_price * (1 + distance_pct), 2)   # trail above price for short
+            current_stop = pos.trailing_stop or pos.stop_loss
+            if new_trail < current_stop:   # lower stop = better for short
+                logger.debug(f"Trailing stop updated (short): {pos.symbol} {current_stop:.2f} → {new_trail:.2f}")
+                return new_trail
+        else:
+            profit_pct = (current_price - pos.avg_price) / pos.avg_price
+            if profit_pct < activation_pct:
+                return None
+            new_trail = round(current_price * (1 - distance_pct), 2)
+            current_stop = pos.trailing_stop or pos.stop_loss
+            if new_trail > current_stop:
+                logger.debug(f"Trailing stop updated (long): {pos.symbol} {current_stop:.2f} → {new_trail:.2f}")
+                return new_trail
         return None
 
     async def _trigger_exit(self, pos: Position, price: float, reason: str) -> None:

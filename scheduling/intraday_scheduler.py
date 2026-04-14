@@ -93,13 +93,14 @@ class IntradayScheduler:
             logger.error(f"EOD close error: {exc}")
 
     async def _daily_report(self) -> None:
-        """Generate daily P&L report."""
+        """Generate daily P&L report with benchmark comparison."""
         if not is_trading_day():
             return
         try:
-            portfolio = self.orchestrator.portfolio
-            alerter = self.orchestrator.alerter
-            audit = self.orchestrator.audit
+            portfolio  = self.orchestrator.portfolio
+            alerter    = self.orchestrator.alerter
+            audit      = self.orchestrator.audit
+            benchmark  = self.orchestrator.benchmark
 
             summary = portfolio.summary()
             logger.info(f"Daily summary: {summary}")
@@ -108,7 +109,16 @@ class IntradayScheduler:
                 unrealized=0.0,
                 total_capital=portfolio.total_capital,
             )
+
+            # Record benchmark metrics
+            bm_metrics = await benchmark.record_daily(portfolio.total_capital)
+            audit.log_agent_decision("BenchmarkTracker", benchmark.summary_text(), bm_metrics)
+
             if alerter:
+                msg = (
+                    f"Daily P&L: ₹{portfolio.daily_realized_pnl:+,.0f} | "
+                    f"{benchmark.summary_text()}"
+                )
                 await alerter.alert_daily_pnl(
                     portfolio.daily_realized_pnl, 0.0, portfolio.total_capital
                 )

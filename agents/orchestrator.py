@@ -12,6 +12,7 @@ from typing import Optional
 
 from config.settings import get_settings
 from config.universes import NIFTY50, NIFTY_MIDCAP_150_SAMPLE, NIFTY_SMALLCAP_250_SAMPLE
+from monitoring.benchmark_tracker import BenchmarkTracker
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,7 @@ class TradingOrchestrator:
         self.audit = audit_trail
         self.alerter = alerter
         self.settings = get_settings()
+        self.benchmark = BenchmarkTracker()
 
     async def morning_setup(self) -> TradingState:
         """
@@ -71,6 +73,26 @@ class TradingOrchestrator:
         4. Pre-approve swing signals
         """
         state = TradingState()
+
+        # Reset daily P&L baseline so kill switch uses today's opening capital
+        self.portfolio.reset_daily_pnl()
+
+        # Initialize BenchmarkTracker with opening values
+        try:
+            from data.market_data import fetch_latest_bars
+            from config.instruments import get_token
+            nifty_token = get_token("NIFTY 50")
+            if nifty_token:
+                nifty_df = fetch_latest_bars(nifty_token, "day", 1)
+                if not nifty_df.empty:
+                    nifty_close = nifty_df.iloc[-1]["close"]
+                    self.benchmark.set_initial_values(
+                        portfolio_value=self.portfolio.total_capital,
+                        nifty_close=nifty_close
+                    )
+                    logger.info(f"BenchmarkTracker initialized: portfolio=₹{self.portfolio.total_capital:,.0f}, NIFTY50={nifty_close:.2f}")
+        except Exception as exc:
+            logger.warning(f"Failed to initialize BenchmarkTracker: {exc}")
 
         # --- Universe selection ---
         from config.universes import NIFTY50, NIFTY_BANK, NIFTY_IT
@@ -109,9 +131,21 @@ class TradingOrchestrator:
             state.regime = selection.get("regime", "unknown")
             state.risk_level = selection.get("risk_level", "medium")
             logger.info(f"Regime: {state.regime} | Weights: {state.strategy_weights}")
+
+            # Push weights into risk agent so allocator uses them
+            self.risk_agent.strategy_weights = state.strategy_weights
         except Exception as exc:
             logger.error(f"Strategy selection failed: {exc}")
             state.errors.append(f"Strategy selection: {exc}")
+
+        # --- Sentiment signals → technical cross-validation ---
+        if state.sentiment_scores:
+            logger.info("Generating sentiment signals with technical cross-validation...")
+            try:
+                await self._generate_sentiment_signals(state)
+            except Exception as exc:
+                logger.error(f"Sentiment signal generation failed: {exc}")
+                state.errors.append(f"Sentiment signals: {exc}")
 
         self.audit.log_agent_decision(
             "Orchestrator",
@@ -119,6 +153,83 @@ class TradingOrchestrator:
             {"symbols_count": len(state.symbols), "regime": state.regime},
         )
         return state
+
+    async def _generate_sentiment_signals(self, state: TradingState) -> None:
+        """
+        For each symbol with a sentiment score, run SentimentDrivenStrategy,
+        cross-validate with SignalCombiner, and publish confirmed signals to the bus.
+        """
+        from config.instruments import get_token
+        from data.cache import fetch_or_cache
+        from data.market_data import fetch_latest_bars
+        from signals.indicators import compute_all_indicators
+        from signals.signal_combiner import combine
+        from signals.signal_model import TradingMode
+        from strategies.sentiment_driven import SentimentDrivenStrategy
+
+        strategy = SentimentDrivenStrategy()
+        published = confirmed = rejected = downgraded = 0
+
+        for symbol, score_data in state.sentiment_scores.items():
+            adjusted_score = score_data.get("adjusted_score")
+            raw_score = score_data.get("score")
+            reasoning = score_data.get("reasoning", "")
+            signal_type = score_data.get("signal_type", "neutral")
+
+            if signal_type == "neutral":
+                continue
+
+            token = get_token(symbol)
+            if not token:
+                continue
+
+            try:
+                df = fetch_or_cache(
+                    token, "day",
+                    fetch_latest_bars, token, "day", 400
+                )
+                if df.empty or len(df) < 60:
+                    continue
+                df = compute_all_indicators(df)
+            except Exception as exc:
+                logger.warning(f"Data fetch for sentiment signal [{symbol}]: {exc}")
+                continue
+
+            mode = (
+                TradingMode.INTRADAY if signal_type == "short_candidate"
+                else TradingMode.SWING
+            )
+
+            signal = strategy.generate_signal(
+                symbol=symbol,
+                df=df,
+                mode=mode,
+                sentiment_score=raw_score,
+                adjusted_score=adjusted_score,
+                sentiment_reasoning=reasoning,
+            )
+            published += 1
+
+            if signal is None:
+                logger.debug(f"Sentiment strategy filtered out [{symbol}] (price/trend conditions)")
+                continue
+
+            result = combine(signal, df)
+
+            if result.decision == "reject":
+                rejected += 1
+                continue
+            elif result.decision == "downgrade":
+                downgraded += 1
+
+            if result.signal:
+                confirmed += 1
+                await self.bus.publish_signal(result.signal)
+
+        logger.info(
+            f"Sentiment signals: {published} generated | "
+            f"{confirmed} confirmed | {downgraded} downgraded | {rejected} rejected"
+        )
 
     async def run_intraday_cycle(self, symbols: list[str]) -> None:
         """

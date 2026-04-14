@@ -26,7 +26,10 @@ Available strategies:
 - momentum: Works best in trending markets with clear directional bias
 - mean_reversion: Works best in sideways, range-bound markets with high volatility
 - breakout: Works best at key technical levels with volume confirmation
+- oversold_bounce: Works best after sharp sell-offs; RSI < 30 with MACD turning up
+- overbought_short: Works best after extended rallies; RSI > 75 with MACD turning down (intraday MIS short)
 - sentiment_driven: Works when there are strong fundamental catalysts from news
+- llm_strategy: Swing trades decided by LLM analysis; use in uncertain/mixed regimes
 
 Market regime indicators:
 {regime_data}
@@ -39,7 +42,10 @@ Respond in JSON ONLY:
     "momentum": <0.0-1.0>,
     "mean_reversion": <0.0-1.0>,
     "breakout": <0.0-1.0>,
-    "sentiment_driven": <0.0-1.0>
+    "oversold_bounce": <0.0-1.0>,
+    "overbought_short": <0.0-1.0>,
+    "sentiment_driven": <0.0-1.0>,
+    "llm_strategy": <0.0-1.0>
   }},
   "risk_level": "<low|medium|high>",
   "risk_reasoning": "<1 sentence>",
@@ -141,10 +147,13 @@ class StrategySelector:
                 "regime": "uncertain",
                 "regime_reasoning": f"LLM unavailable: {exc}",
                 "strategy_weights": {
-                    "momentum": 0.25,
-                    "mean_reversion": 0.25,
-                    "breakout": 0.25,
-                    "sentiment_driven": 0.25,
+                    "momentum": 0.18,
+                    "mean_reversion": 0.18,
+                    "breakout": 0.18,
+                    "oversold_bounce": 0.13,
+                    "overbought_short": 0.13,
+                    "sentiment_driven": 0.12,
+                    "llm_strategy": 0.08,
                 },
                 "risk_level": "medium",
             }

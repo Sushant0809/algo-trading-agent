@@ -114,9 +114,17 @@ class RiskManager:
             self.audit.log_risk_decision(signal, False, "Calculated qty = 0 (insufficient capital)")
             return None
 
-        # Final capital check
+        # Final capital check — must have enough cash AND preserve 10% reserve
+        cash_floor = self.portfolio.total_capital * 0.10
+        cash_after = self.portfolio.cash - allocated
         if allocated > self.portfolio.cash:
             self.audit.log_risk_decision(signal, False, f"Insufficient cash: need ₹{allocated:.0f}, have ₹{self.portfolio.cash:.0f}")
+            return None
+        if cash_after < cash_floor:
+            self.audit.log_risk_decision(
+                signal, False,
+                f"Would breach 10% cash reserve: cash after=₹{cash_after:.0f}, floor=₹{cash_floor:.0f}"
+            )
             return None
 
         approved = ApprovedSignal(

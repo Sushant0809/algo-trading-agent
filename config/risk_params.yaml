@@ -2,10 +2,12 @@
 # Breach of any limit triggers appropriate kill switch
 
 position_limits:
-  max_position_size_pct: 0.05          # Max 5% of capital per position
+  max_position_size_pct: 0.08          # Max 8% per swing position (up from 5%)
+  max_position_size_bull_pct: 0.12     # Max 12% per position in bull regimes (aggressive allocation)
   max_sector_exposure_pct: 0.20        # Max 20% in any single sector
-  max_intraday_positions: 10           # Max open MIS positions simultaneously
-  max_swing_positions: 15              # Max open CNC positions simultaneously
+  max_concurrent_positions: 10         # Max total open positions (MIS + CNC, up from 5)
+  max_intraday_positions: 5            # Max concurrent MIS (intraday) positions
+  max_swing_positions: 5               # Max concurrent CNC (swing) positions
   max_correlated_positions: 3          # Max positions in same sector
   smallcap_max_allocation_pct: 0.15    # Smallcaps capped at 15% of portfolio
 

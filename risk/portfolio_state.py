@@ -21,22 +21,32 @@ class Position:
     avg_price: float
     strategy: str
     mode: str           # intraday or swing
+    direction: str = "long"   # "long" or "short"
     entered_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     stop_loss: float = 0.0
     target: float = 0.0
     trailing_stop: Optional[float] = None
     order_id: str = ""
+    stop_order_id: str = ""  # SL-M order ID (to cancel on exit)
+
+    @property
+    def is_short(self) -> bool:
+        return self.direction == "short"
 
     @property
     def cost_basis(self) -> float:
         return self.avg_price * self.qty
 
     def unrealized_pnl(self, current_price: float) -> float:
+        if self.is_short:
+            return (self.avg_price - current_price) * self.qty
         return (current_price - self.avg_price) * self.qty
 
     def unrealized_pnl_pct(self, current_price: float) -> float:
         if self.avg_price == 0:
             return 0.0
+        if self.is_short:
+            return (self.avg_price - current_price) / self.avg_price
         return (current_price - self.avg_price) / self.avg_price
 
 
@@ -64,6 +74,7 @@ class PortfolioState:
         self.initial_capital = initial_capital
         self.cash = initial_capital
         self.peak_capital = initial_capital
+        self.day_start_capital = initial_capital   # reset each morning
 
         self.positions: dict[str, Position] = {}   # symbol → Position
         self.trades: list[Trade] = []
@@ -91,7 +102,8 @@ class PortfolioState:
 
     @property
     def daily_loss_pct(self) -> float:
-        start = self.initial_capital  # Simplification: day-start capital
+        """Loss today vs this morning's capital (not startup capital)."""
+        start = self.day_start_capital
         return (start - self.total_capital) / start if start > 0 else 0.0
 
     # -------------------------------------------------------------------------
@@ -119,8 +131,24 @@ class PortfolioState:
                 logger.warning(f"No open position for {symbol}")
                 return None
 
-            realized = (exit_price - pos.avg_price) * pos.qty
-            self.cash += exit_price * pos.qty
+            if pos.is_short:
+                realized = (pos.avg_price - exit_price) * pos.qty
+                self.cash += pos.avg_price * pos.qty  # return margin/proceeds
+            else:
+                realized = (exit_price - pos.avg_price) * pos.qty
+                self.cash += exit_price * pos.qty
+
+            # Deduct transaction costs (brokerage + STT + exchange charges + GST)
+            # Zerodha equity: ₹20/order brokerage, 0.1% STT on sell, ~0.05% other charges
+            turnover  = exit_price * pos.qty
+            brokerage = min(20.0, turnover * 0.0003)     # ₹20 flat or 0.03%, whichever lower
+            stt       = turnover * 0.001 if pos.product == "CNC" else turnover * 0.00025
+            exchange  = turnover * 0.0000345             # NSE exchange + SEBI charges
+            gst       = (brokerage + exchange) * 0.18
+            total_cost = round(brokerage + stt + exchange + gst, 2)
+            realized -= total_cost
+            self.cash -= total_cost
+            logger.debug(f"Transaction costs [{symbol}]: ₹{total_cost:.2f} (brok={brokerage:.2f} STT={stt:.2f})")
             self.daily_realized_pnl += realized
             self.peak_capital = max(self.peak_capital, self.total_capital)
 
@@ -182,9 +210,10 @@ class PortfolioState:
         return total
 
     def reset_daily_pnl(self) -> None:
-        """Call at session start each day."""
+        """Call at market open each day to reset daily tracking."""
         self.daily_realized_pnl = 0.0
         self.session_date = date.today()
+        self.day_start_capital = self.total_capital   # today's baseline for kill switch
 
     def summary(self) -> dict:
         return {

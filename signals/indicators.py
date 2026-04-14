@@ -54,6 +54,11 @@ def add_volume_sma(df: pd.DataFrame, period: int = 20) -> pd.Series:
     return ta.sma(df["volume"], length=period)
 
 
+def add_roc(df: pd.DataFrame, period: int = 10, col: str = "close") -> pd.Series:
+    """Rate of change: (close - close[N]) / close[N]."""
+    return df[col].pct_change(periods=period)
+
+
 def rolling_high(df: pd.DataFrame, period: int = 20) -> pd.Series:
     return df["high"].rolling(period).max()
 
@@ -105,5 +110,9 @@ def compute_all_indicators(df: pd.DataFrame, params: dict | None = None) -> pd.D
     period = p.get("breakout_period", 20)
     df["roll_high"] = rolling_high(df, period)
     df["roll_low"] = rolling_low(df, period)
+
+    # Rate of change (for crash detection)
+    df["roc_5"] = add_roc(df, 5)
+    df["roc_10"] = add_roc(df, 10)
 
     return df.dropna(subset=["ema_20", "rsi"])

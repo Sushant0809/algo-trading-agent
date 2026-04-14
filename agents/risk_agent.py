@@ -13,6 +13,7 @@ import anthropic
 
 from config.settings import get_settings
 from monitoring.audit_trail import AuditTrail
+from risk.portfolio_allocator import PortfolioAllocator
 from risk.portfolio_state import PortfolioState
 from risk.risk_manager import KillSwitchError, RiskManager
 from signals.signal_bus import SignalBus
@@ -67,20 +68,43 @@ class RiskAgent:
         self.bus = signal_bus
         self.audit = audit
         self.use_llm_review = use_llm_review
+        self.allocator = PortfolioAllocator(portfolio)
+        self.strategy_weights: dict[str, float] = {}   # updated by orchestrator each morning
         settings = get_settings()
         self.client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
         self.model = settings.anthropic_model
 
     async def run(self) -> None:
-        """Continuous loop: consume raw signals → evaluate → publish approved."""
+        """
+        Continuous loop: drain raw signals in batches → allocator → evaluate → publish.
+        Batching allows the allocator to rank all pending signals together before
+        committing capital to any of them.
+        """
         logger.info("RiskAgent started, listening for signals...")
         while True:
             try:
-                signal = await asyncio.wait_for(self.bus.consume_signal(), timeout=1.0)
-                approved = await self._evaluate_signal(signal)
-                if approved:
-                    await self.bus.publish_approved(approved)
+                # Block until at least one signal arrives
+                first = await asyncio.wait_for(self.bus.consume_signal(), timeout=1.0)
                 self.bus.signal_done()
+                batch = [first]
+
+                # Drain any additional signals already queued (non-blocking)
+                while not self.bus._raw_queue.empty():
+                    sig = self.bus._raw_queue.get_nowait()
+                    self.bus.signal_done()
+                    batch.append(sig)
+
+                # Portfolio allocator: rank and filter by capital availability
+                shortlist = self.allocator.allocate(batch, self.strategy_weights)
+
+                for signal in shortlist:
+                    try:
+                        approved = await self._evaluate_signal(signal)
+                        if approved:
+                            await self.bus.publish_approved(approved)
+                    except Exception as exc:
+                        logger.error(f"RiskAgent signal eval error [{signal.symbol}]: {exc}")
+
             except asyncio.TimeoutError:
                 continue
             except Exception as exc:

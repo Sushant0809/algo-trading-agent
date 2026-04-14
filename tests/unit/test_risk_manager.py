@@ -142,9 +142,76 @@ class TestPortfolioState:
 
         trade = await portfolio.close_position("TCS", exit_price=3600, exit_reason="target")
         assert trade is not None
-        assert trade.realized_pnl == 1000  # (3600 - 3500) * 10
+        # P&L = (3600-3500)*10 = ₹1000 gross, minus transaction costs
+        # Costs: STT=0.1% on 36000=36, brokerage=min(20,36000*0.0003)=10.8,
+        #        exchange=36000*0.0000345≈1.24, GST=18%*(10.8+1.24)≈2.17 → ~₹50
+        # Net P&L should be positive but less than ₹1000
+        assert 900 < trade.realized_pnl < 1000
         assert not portfolio.has_position("TCS")
-        assert portfolio.cash == 1_000_000 + 36_000 - 35_000
+
+    @pytest.mark.asyncio
+    async def test_short_position_profit(self):
+        """Short at 500, close at 450 → profit of (500-450)*qty minus costs."""
+        portfolio = PortfolioState(1_000_000)
+        pos = Position(
+            symbol="SBIN", product="MIS", qty=100, avg_price=500,
+            strategy="overbought_short", mode="intraday", direction="short",
+        )
+        await portfolio.open_position(pos)
+        assert portfolio.has_position("SBIN")
+
+        trade = await portfolio.close_position("SBIN", exit_price=450, exit_reason="target")
+        assert trade is not None
+        # Gross P&L = (500-450)*100 = ₹5000
+        assert trade.realized_pnl > 0, "Short closed lower than entry should be profitable"
+        assert trade.realized_pnl < 5000, "Should be less than gross after costs"
+
+    @pytest.mark.asyncio
+    async def test_short_position_loss(self):
+        """Short at 500, close at 550 → loss."""
+        portfolio = PortfolioState(1_000_000)
+        pos = Position(
+            symbol="SBIN", product="MIS", qty=100, avg_price=500,
+            strategy="overbought_short", mode="intraday", direction="short",
+        )
+        await portfolio.open_position(pos)
+        trade = await portfolio.close_position("SBIN", exit_price=550, exit_reason="stop_loss")
+        assert trade is not None
+        assert trade.realized_pnl < 0, "Short closed higher than entry should be a loss"
+
+    @pytest.mark.asyncio
+    async def test_transaction_costs_deducted(self):
+        """Transaction costs must be deducted from realized P&L."""
+        portfolio = PortfolioState(1_000_000)
+        pos = Position(
+            symbol="RELIANCE", product="CNC", qty=10, avg_price=2500,
+            strategy="momentum", mode="swing",
+        )
+        await portfolio.open_position(pos)
+        trade = await portfolio.close_position("RELIANCE", exit_price=2500, exit_reason="test")
+        # Entry=exit → gross P&L is 0, but costs are non-zero → net P&L < 0
+        assert trade.realized_pnl < 0, "Flat trade should incur net loss due to transaction costs"
+
+    @pytest.mark.asyncio
+    async def test_daily_pnl_reset_uses_current_capital(self):
+        """reset_daily_pnl() should set day_start_capital to current total capital."""
+        portfolio = PortfolioState(1_000_000)
+        # Simulate profitable day: add ₹50k
+        portfolio.cash = 1_050_000
+        portfolio.reset_daily_pnl()
+        assert portfolio.day_start_capital == pytest.approx(1_050_000)
+
+    @pytest.mark.asyncio
+    async def test_daily_loss_pct_uses_day_start_capital(self):
+        """daily_loss_pct compares against day_start_capital, not initial_capital."""
+        portfolio = PortfolioState(1_000_000)
+        # Simulate 10% growth followed by reset
+        portfolio.cash = 1_100_000
+        portfolio.reset_daily_pnl()
+        # Now lose ₹55k today
+        portfolio.cash = 1_045_000
+        # Loss = 55k / 1.1M ≈ 5%
+        assert portfolio.daily_loss_pct == pytest.approx(55_000 / 1_100_000, abs=0.001)
 
     @pytest.mark.asyncio
     async def test_drawdown_calculation(self):
@@ -160,3 +227,17 @@ class TestPortfolioState:
         assert "cash" in summary
         assert "total_capital" in summary
         assert summary["open_positions"] == 0
+
+
+class TestRiskManagerCashReserve:
+    @pytest.mark.asyncio
+    async def test_rejects_signal_when_cash_below_floor(self, risk_mgr, portfolio):
+        """Signal should be rejected if approving it would break the 10% cash reserve."""
+        # Deplete cash to near the floor: 10% of 1M = 100k
+        portfolio.cash = 105_000  # Just above floor; a 2% signal (~₹20k) would breach it
+
+        # A 2% signal on ₹1M = ₹20k allocation, leaving 85k < 100k floor
+        signal = make_signal(symbol="HDFC", position_size_pct=0.02)
+        approved = await risk_mgr.evaluate(signal)
+        # Should be rejected due to cash floor
+        assert approved is None
